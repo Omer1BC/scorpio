@@ -1,10 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [activeTabUrl, setActiveTabUrl] = useState<string>('')
+
+  useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        setActiveTabUrl(tabs[0]?.url ?? 'No active tab')
+      })
+    } else {
+      setActiveTabUrl('Chrome API not available - check extension context')
+      console.error('chrome.tabs is undefined. Make sure extension is loaded properly.')
+    }
+  }, [])
 
   console.log(chrome)
   return (
@@ -23,7 +35,7 @@ function App() {
 	{count}
         </button>
         <p>
-          Ediddddddt {chrome.runtime.id} <code>src/App.tsx</code> and save to test HMR
+         Active Tab: {activeTabUrl}  <code>src/App.tsx</code> and save to test HMR
         </p>
       </div>
       <p className="read-the-docs">
