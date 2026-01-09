@@ -1,0 +1,15 @@
+{
+  "name": "Scorpio",
+  "version": "1.0",
+  "manifest_version": 3,
+  "permissions": ["sidePanel"],
+  "action": {
+      "default_title":"Scorpio"
+  },
+  "background" :{
+      "service_worker":"background.js"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  }
+}
