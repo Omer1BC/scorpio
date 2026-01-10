@@ -11,18 +11,13 @@ export default defineConfig({
  //       plugins: [['babel-plugin-react-compiler']],
   //    },
     }),
+    crx({ manifest }),
   ],
-  build: {
-    rollupOptions: {
-      input: {
-        popup: resolve(__dirname, 'index.html'),
-        background: resolve(__dirname, 'src/background.ts'),
-      },
-      output: {
-        entryFileNames: (chunkInfo) => {
-          return chunkInfo.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js'
-        },
-      },
+  server: {
+    port: 5173,
+    strictPort: true,
+    hmr: {
+      port: 5173,
     },
   },
 })
