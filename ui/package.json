@@ -9,8 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.12",
+    "@langchain/google-genai": "^2.1.7",
+    "@langchain/langgraph": "^1.0.15",
+    "@langchain/openai": "^1.2.1",
+    "langchain": "^1.2.7",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.3",

@@ -10,9 +10,9 @@ function App() {
     const button = document.querySelector('button.learn') as HTMLButtonElement
     if (button) {
       button.click()
-      // console.log('Start Learning button clicked')
+      console.log('Start Learning button clicked')
     } else {
-      // console.error('Start Learning button not found')
+      console.error('Start Learning button not found')
     }
   }
 
@@ -21,8 +21,7 @@ function App() {
       console.log("Received", message)
 
       if (message.action == 'clickStartLearning') {
-        const executeCode = new Function(message.body);
-executeCode();
+	clickStartLearningButton();
         sendResponse({success: true, message: 'clicked button'})
       }
           return true

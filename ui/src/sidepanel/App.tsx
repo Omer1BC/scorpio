@@ -1,56 +1,108 @@
-import crxLogo from '@/assets/crx.svg'
-import reactLogo from '@/assets/react.svg'
-import viteLogo from '@/assets/vite.svg'
-import HelloWorld from '@/components/HelloWorld'
+import { useState, useRef, useEffect } from 'react'
+import { Fragment } from 'react/jsx-runtime'
+import { useAgent } from '@/contexts/agentContext';
+
 import './App.css'
-import { useState, useEffect } from 'react'
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export default function App() {
-  const [activeTabUrl, setActiveTabUrl] = useState<string>('')
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
-  const sendMessage = () => {
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          {action: 'clickStartLearning', body: `
-  const button = document.querySelector('button.learn');
-  if (button) {
-    button.click();
-  }
-`},
-          (response) => {
-            console.log('response' ,response)
-          }
-        )
-      }
-    })
-  }
-
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        setActiveTabUrl(tabs[0]?.url ?? 'No active tab')
-      })
-    } else {
-      setActiveTabUrl('Chrome API not available - check extension context')
-      console.error('chrome.tabs is undefined. Make sure extension is loaded properly.')
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return
+
+    const userMessage: Message = { role: 'user', content: input }
+    setMessages(prev => [...prev, userMessage])
+    const currentInput = input
+    setInput('')
+    setIsLoading(true)
+
+    // Simulate API delay
+    setTimeout(() => {
+      const placeholderResponses = [
+        "I'm a placeholder AI assistant. This is a simulated response to your message.",
+        "Thank you for your message! This is a demo response without using the actual API.",
+        "I understand you said: '" + currentInput + "'. This is a placeholder response.",
+        "That's interesting! I'm currently running in demo mode with placeholder responses.",
+        "I received your message. In a real scenario, I would process this with AI and provide a thoughtful response."
+      ]
+
+      const randomResponse = placeholderResponses[Math.floor(Math.random() * placeholderResponses.length)]
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: randomResponse
+      }
+
+      setMessages(prev => [...prev, assistantMessage])
+      setIsLoading(false)
+    }, 1000) // 1 second delay to simulate API call
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
     }
-  }, [])
-  
+  }
+
   return (
-    <div>
-      <button  onClick={sendMessage}>Click Me</button>
-      <p>Active Tab: {activeTabUrl}  <code>src/App.tsx</code> and save to test HMR</p>
-      <a href="https://vite.dev" target="_blank" rel="noreferrer">
-        <img src={viteLogo} className="logo" alt="Vite logo" />
-      </a>
-      <a href="https://reactjs.org/" target="_blank" rel="noreferrer">
-        <img src={reactLogo} className="logo react" alt="React logo" />
-      </a>
-      <a href="https://crxjs.dev/vite-plugin" target="_blank" rel="noreferrer">
-        <img src={crxLogo} className="logo crx" alt="crx logo" />
-      </a>
-      <HelloWorld msg="Vite + React + CRXJS" />
-    </div>
+    <Fragment>
+      <div className='chat_window'>
+        {messages.length === 0 ? (
+          <div className='welcome_message'>
+            <h2>AI Assistant</h2>
+            <p>Ask me anything!</p>
+          </div>
+        ) : (
+          <div className='messages'>
+            {messages.map((message, index) => (
+              <div key={index} className={`message ${message.role}`}>
+                <div className='message_content'>
+                  {message.content}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className='message assistant'>
+                <div className='message_content typing'>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+        )}
+      </div>
+      <div className='input_window'>
+        <input
+          type='text'
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder='Type your message...'
+          disabled={isLoading}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={isLoading || !input.trim()}
+        >
+          Send
+        </button>
+      </div>
+    </Fragment>
   )
 }
