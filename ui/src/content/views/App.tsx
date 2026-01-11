@@ -1,5 +1,5 @@
 import Logo from '@/assets/crx.svg'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -10,11 +10,30 @@ function App() {
     const button = document.querySelector('button.learn') as HTMLButtonElement
     if (button) {
       button.click()
-      console.log('Start Learning button clicked')
+      // console.log('Start Learning button clicked')
     } else {
-      console.error('Start Learning button not found')
+      // console.error('Start Learning button not found')
     }
   }
+
+  useEffect(() => {
+    const listener = (message: any,sender:chrome.runtime.MessageSender, sendResponse: (response?: any) => void) =>{
+      console.log("Received", message)
+
+      if (message.action == 'clickStartLearning') {
+        const executeCode = new Function(message.body);
+executeCode();
+        sendResponse({success: true, message: 'clicked button'})
+      }
+          return true
+    }
+
+    chrome.runtime.onMessage.addListener(listener)
+    return () => {
+      chrome.runtime.onMessage.removeListener(listener)
+    }
+
+  },[])
 
   return (
     <div className="popup-container">

@@ -7,6 +7,25 @@ import { useState, useEffect } from 'react'
 export default function App() {
   const [activeTabUrl, setActiveTabUrl] = useState<string>('')
 
+  const sendMessage = () => {
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(
+          tabs[0].id,
+          {action: 'clickStartLearning', body: `
+  const button = document.querySelector('button.learn');
+  if (button) {
+    button.click();
+  }
+`},
+          (response) => {
+            console.log('response' ,response)
+          }
+        )
+      }
+    })
+  }
+
   useEffect(() => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -20,6 +39,7 @@ export default function App() {
   
   return (
     <div>
+      <button  onClick={sendMessage}>Click Me</button>
       <p>Active Tab: {activeTabUrl}  <code>src/App.tsx</code> and save to test HMR</p>
       <a href="https://vite.dev" target="_blank" rel="noreferrer">
         <img src={viteLogo} className="logo" alt="Vite logo" />
