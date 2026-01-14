@@ -1,17 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
 import { Fragment } from 'react/jsx-runtime'
-import { useAgent } from '@/contexts/agentContext';
+import { useAgent, AgentMessage } from '@/contexts/agentContext';
 
 import './App.css'
 interface Message {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool_call'
   content: string
+  toolName?: string
+  toolArgs?: Record<string, any>
 }
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const { sendMessage, isLoading } = useAgent()
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new messages arrive
@@ -19,41 +21,72 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const sendMessage = async () => {
+  const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return
 
     const userMessage: Message = { role: 'user', content: input }
     setMessages(prev => [...prev, userMessage])
     const currentInput = input
     setInput('')
-    setIsLoading(true)
 
-    // Simulate API delay
-    setTimeout(() => {
-      const placeholderResponses = [
-        "I'm a placeholder AI assistant. This is a simulated response to your message.",
-        "Thank you for your message! This is a demo response without using the actual API.",
-        "I understand you said: '" + currentInput + "'. This is a placeholder response.",
-        "That's interesting! I'm currently running in demo mode with placeholder responses.",
-        "I received your message. In a real scenario, I would process this with AI and provide a thoughtful response."
-      ]
+    try {
+      // Call the backend API
+      const agentMessages = await sendMessage(currentInput)
 
-      const randomResponse = placeholderResponses[Math.floor(Math.random() * placeholderResponses.length)]
+      // Parse the agent messages and convert to UI messages
+      const newMessages: Message[] = []
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: randomResponse
+      for (const msg of agentMessages) {
+        // Skip HumanMessage to avoid duplicating user input
+        if (msg.type === 'HumanMessage') {
+          continue
+        }
+
+        if (msg.type === 'AIMessage') {
+          // Handle tool calls separately
+          if (msg.tool_calls && msg.tool_calls.length > 0) {
+            for (const toolCall of msg.tool_calls) {
+              newMessages.push({
+                role: 'tool_call',
+                content: `Calling tool: ${toolCall.name}`,
+                toolName: toolCall.name,
+                toolArgs: toolCall.args
+              })
+            }
+          }
+
+          // Add AI response content if present
+          if (msg.content) {
+            newMessages.push({
+              role: 'assistant',
+              content: msg.content
+            })
+          }
+        } else if (msg.type === 'ToolMessage') {
+          newMessages.push({
+            role: 'assistant',
+            content: `Tool '${msg.name}' result: ${msg.content}`
+          })
+        }
       }
 
-      setMessages(prev => [...prev, assistantMessage])
-      setIsLoading(false)
-    }, 1000) // 1 second delay to simulate API call
+      setMessages(prev => [...prev, ...newMessages])
+    } catch (error) {
+      console.error('Error sending message:', error)
+
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error processing your request. Please make sure the backend server is running.'
+      }
+
+      setMessages(prev => [...prev, errorMessage])
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      handleSendMessage()
     }
   }
 
@@ -71,6 +104,12 @@ export default function App() {
               <div key={index} className={`message ${message.role}`}>
                 <div className='message_content'>
                   {message.content}
+                  {message.role === 'tool_call' && message.toolArgs && (
+                    <div className='tool_args'>
+                      <strong>Arguments:</strong>
+                      <pre>{JSON.stringify(message.toolArgs, null, 2)}</pre>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -97,7 +136,7 @@ export default function App() {
           disabled={isLoading}
         />
         <button
-          onClick={sendMessage}
+          onClick={handleSendMessage}
           disabled={isLoading || !input.trim()}
         >
           Send

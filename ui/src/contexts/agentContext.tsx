@@ -1,10 +1,20 @@
 import {createContext, useState,useContext} from 'react';
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { screenshotTool } from './tools';
+import { pingApi, pingToolApi, takeScreenshot } from './tools';
+
+export interface AgentMessage {
+    type: string;
+    content: string;
+    tool_calls?: Array<{
+        id: string;
+        name: string;
+        args: Record<string, any>;
+    }>;
+    name?: string;
+    tool_call_id?: string;
+}
 
 interface AgentContextType {
-    model: ChatGoogleGenerativeAI,
-    sendMessage: (message: string) => Promise<string>;
+    sendMessage: (message: string) => Promise<AgentMessage[]>;
     isLoading: boolean;
 }
 
@@ -12,17 +22,29 @@ const AgentContext = createContext<AgentContextType | undefined>(undefined);
 
 export const AgentProvider: React.FC<{children: React.ReactNode}> = ({children}) => {
     const [isLoading,setIsLoading] = useState(false);
-    const model = new ChatGoogleGenerativeAI(
-        {model:"gemini-2.5-flash",
-        apiKey: import.meta.env.VITE_GOOGLE_API_KEY
-    })
 
-
-    const sendMessage = async (message: string ): Promise<string> => {
+    const sendMessage = async (message: string ): Promise<AgentMessage[]> => {
         setIsLoading(true);
+
         try {
-            const response = await model.invoke(message);
-            return response.content as string;
+            // Take a screenshot of the current tab
+            // const screenshot = await takeScreenshot();
+
+            // Send API request with screenshot and user's message
+            // const response = await pingApi({
+            //     message: message,
+            //     images: [screenshot]
+            // });
+
+            // Call the tool agent API
+            const toolResponse = await pingToolApi({
+                data: message,
+                thread_id: "1"
+            });
+
+            console.log("Tool agent response:", toolResponse);
+
+            return toolResponse.messages;
         }
         catch (error) {
             console.log("Error with model invocation: ",error);
@@ -34,7 +56,8 @@ export const AgentProvider: React.FC<{children: React.ReactNode}> = ({children})
     };
 
     const value: AgentContextType = {
-        model,sendMessage,isLoading
+        sendMessage,
+        isLoading
     };
     return (
         <AgentContext.Provider value={value}>
