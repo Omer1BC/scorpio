@@ -90,3 +90,67 @@ export const pingToolApi = async (payload: ToolAgentRequest): Promise<ToolAgentR
         throw error;
     }
 }
+
+// Compute tool result on client side
+export const computeTool = async (name: string, args: Record<string, any>): Promise<string> => {
+    const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+
+    if (name === 'process_page') {
+
+        return await new Promise((resolve,reject) => {
+            chrome.tabs.sendMessage(tab.id!, {action: 'processPage'}, (resposne) => {
+                if (chrome.runtime.lastError){
+                    reject(chrome.runtime.lastError.message)
+                }
+                else {
+                    resolve(resposne.data)
+                }
+            })
+        })
+    } else if (name === 'click') {
+
+        return await new Promise((resolve,reject) => {
+            chrome.tabs.sendMessage(tab.id!,{action: 'click',uid:args.uid}, (response) =>{
+                if (chrome.runtime.lastError){
+                    reject(chrome.runtime.lastError.message)
+                }
+                else{
+                    resolve(response.data)
+                }
+            } )
+        })
+        return `${args.uid} clicked!`;
+    }
+    return 'Unknown tool';
+}
+
+
+
+
+
+
+
+// Send completed tool result to server
+export const sendToolResult = async (toolCallId: string, result: string): Promise<void> => {
+    try {
+        const response = await fetch('http://localhost:8000/completeTool', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                tool_call_id: toolCallId,
+                result: result
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        console.log(`Tool result sent: ${toolCallId} -> ${result}`);
+    } catch (error) {
+        console.error('Error sending tool result:', error);
+        throw error;
+    }
+}

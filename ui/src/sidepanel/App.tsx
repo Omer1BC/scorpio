@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Fragment } from 'react/jsx-runtime'
 import { useAgent, AgentMessage } from '@/contexts/agentContext';
+import { computeTool, sendToolResult } from '@/contexts/tools';
 
 import './App.css'
 interface Message {
@@ -46,6 +47,14 @@ export default function App() {
           // Handle tool calls separately
           if (msg.tool_calls && msg.tool_calls.length > 0) {
             for (const toolCall of msg.tool_calls) {
+              // Compute tool result on client
+              const result = await computeTool(toolCall.name, toolCall.args)
+
+              // Send result to server
+              sendToolResult(toolCall.id, result).catch(err => {
+                console.error('Failed to send tool result:', err)
+              })
+
               newMessages.push({
                 role: 'tool_call',
                 content: `Calling tool: ${toolCall.name}`,

@@ -8,7 +8,7 @@ import os
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.tools import tool
-from agent import Agent
+from agents.agent import Agent
 
 
 
@@ -51,25 +51,95 @@ class ToolAgentRequest(BaseModel):
 class ToolAgentResponse(BaseModel):
     messages: List[Dict]  # List of message dictionaries
 
+# Complete Tool Request model
+class CompleteToolRequest(BaseModel):
+    tool_call_id: str
+    result: str
+@tool
+def process_page() -> str:
+    """
+    Process and extract interactive elements from the current page DOM.
+
+    Returns:
+        str: A formatted string of DOM elements in the format:
+            <UID> <TAG> <ID> <TEXT>
+            Where:
+                - UID: Unique numeric identifier for referencing the element (use this with the click tool)
+                - TAG: HTML element type (button, input, a, div, etc.)
+                - ID: The element's HTML id attribute (or "no-id" if none)
+                - TEXT: Visible text content (truncated to 50 chars)
+
+    Example:
+        <0> <body> <no-id> <Welcome to the page>
+          <1> <div> <main> <Welcome to the page>
+            <2> <button> <btn> <Click me!>
+
+        To click the button, use click(uid="2")
+    """
+    result = wait_for_tool_result(timeout=30)
+    return result
+
+@tool
+def click(uid: str) -> str:
+    """Click an element on the page using its unique numeric identifier from process_page.
+
+    Args:
+        uid: The unique numeric identifier (UID) of the element to click, as returned by process_page.
+
+    Returns:
+        str: Result of the click action.
+
+    Example:
+        If process_page returns:
+            <2> <button> <submit-btn> <Submit>
+        Then call click(uid="2") to click that button.
+    """
+    result = wait_for_tool_result(timeout=30)
+    return result
+
+
 @tool
 def add(x:int,y:int) -> str:
     '''A tool that adds 2 numbers and returns their sum as a string result'''
-    return str(x+y)
+    # Wait for client to compute and send result
+    result = wait_for_tool_result(timeout=30)
+    return result if result else f"Timeout: {x}+{y}"
 
 @tool
 def subtract(x:int, y:int) -> str:
     '''A tool that subtracts 2 numbers and returns their diff as a string result'''
-    return str(x - y)
+    # Wait for client to compute and send result
+    result = wait_for_tool_result(timeout=30)
+    return result if result else f"Timeout: {x}-{y}"
 
 # Initialize old agent for backward compatibility
 llm = ChatOpenAI(model="gpt-4o-mini")
 agent = create_agent(llm,tools=[add])
 
 # Initialize new Agent class
-tool_agent = Agent([add, subtract])
+tool_agent = Agent([process_page, click])
 
 # Store conversation histories per thread
 conversation_histories: Dict[str, List] = {}
+
+# Queue for completed tool calls
+tool_results_queue: Dict[str, str] = {}  # {tool_call_id: result}
+import threading
+import time
+tool_queue_lock = threading.Lock()
+current_tool_call_id: Optional[str] = None
+
+def wait_for_tool_result(timeout: int = 30) -> Optional[str]:
+    """Wait for any tool result to appear in the queue"""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        with tool_queue_lock:
+            if tool_results_queue:
+                # Pop any available result
+                _, result = tool_results_queue.popitem()
+                return result
+        time.sleep(0.1)  # Poll every 100ms
+    return None
 
 
 def format_message_history(response) -> str:
@@ -230,6 +300,27 @@ async def tool_agent_endpoint(request: ToolAgentRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
+
+@app.post("/completeTool")
+async def complete_tool(request: CompleteToolRequest):
+    """
+    Endpoint for client to send completed tool results
+
+    Args:
+        request: CompleteToolRequest containing tool_call_id and result
+
+    Returns:
+        Success status
+    """
+    try:
+        with tool_queue_lock:
+            tool_results_queue[request.tool_call_id] = request.result
+
+        print(f"Tool result received: {request.tool_call_id} -> {request.result}")
+        return {"status": "success", "message": "Tool result queued"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error queueing tool result: {str(e)}")
 
 
 if __name__ == "__main__":
