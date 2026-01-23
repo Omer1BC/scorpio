@@ -14,7 +14,7 @@ export interface AgentMessage {
 }
 
 interface AgentContextType {
-    sendMessage: (message: string) => Promise<AgentMessage[]>;
+    sendMessage: (message: string,clearHistory: boolean, url? :string) => Promise<AgentMessage[]>;
     isLoading: boolean;
 }
 
@@ -23,7 +23,7 @@ const AgentContext = createContext<AgentContextType | undefined>(undefined);
 export const AgentProvider: React.FC<{children: React.ReactNode}> = ({children}) => {
     const [isLoading,setIsLoading] = useState(false);
 
-    const sendMessage = async (message: string ): Promise<AgentMessage[]> => {
+    const sendMessage = async (message: string, clearHistory : boolean, url?: string): Promise<AgentMessage[]> => {
         setIsLoading(true);
 
         try {
@@ -39,8 +39,9 @@ export const AgentProvider: React.FC<{children: React.ReactNode}> = ({children})
             // Call the tool agent API
             const toolResponse = await pingToolApi({
                 data: message,
-                thread_id: "1"
-            });
+                thread_id: "1",
+                clearHistory: clearHistory
+            },url);
 
             console.log("Tool agent response:", toolResponse);
 

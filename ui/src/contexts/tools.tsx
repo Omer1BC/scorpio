@@ -28,6 +28,7 @@ interface AgentResponse {
 interface ToolAgentRequest {
     data: string;
     thread_id?: string;
+    clearHistory: boolean
 }
 
 // Type definition for Tool Agent Response
@@ -68,10 +69,9 @@ export const pingApi = async (payload: AgentRequest): Promise<AgentResponse> => 
     }
 }
 
-export const pingToolApi = async (payload: ToolAgentRequest): Promise<ToolAgentResponse> => {
-    console.log("tool agent payload", payload);
+export const pingToolApi = async (payload: ToolAgentRequest, url : string = 'http://localhost:8000/tool_agent' ): Promise<ToolAgentResponse> => {
     try {
-        const response = await fetch('http://localhost:8000/tool_agent', {
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -108,20 +108,62 @@ export const computeTool = async (name: string, args: Record<string, any>): Prom
             })
         })
     } else if (name === 'click') {
+        return await sendMessageToTab(tab.id!,{action: 'click',uid:args.uid})
 
-        return await new Promise((resolve,reject) => {
-            chrome.tabs.sendMessage(tab.id!,{action: 'click',uid:args.uid}, (response) =>{
-                if (chrome.runtime.lastError){
-                    reject(chrome.runtime.lastError.message)
-                }
-                else{
-                    resolve(response.data)
-                }
-            } )
+    } else if  (name == 'input_tool') {
+        return await sendMessageToTab(tab.id!,{action: "input_tool",uid: args.uid, content: args.content})
+    } else if (name === 'take_screenshot') {
+        const screenshot = await takeScreenshot()
+        // Extract base64 from data URL (remove "data:image/png;base64," prefix)
+        const base64 = screenshot.includes('base64,') ? screenshot.split('base64,')[1] : screenshot
+
+        // Get viewport dimensions
+        const [tab] = await chrome.tabs.query({active: true, currentWindow: true})
+        const viewport = await new Promise<{width: number, height: number}>((resolve) => {
+            chrome.tabs.sendMessage(tab.id!, {action: 'getViewportDimensions'}, (response) => {
+                resolve(response.viewport || {width: 0, height: 0})
+            })
         })
-        return `${args.uid} clicked!`;
+
+        // Return both screenshot and viewport info
+        return JSON.stringify({
+            screenshot: base64,
+            viewport: viewport
+        })
+    } else if (name === 'click_with_coordinates') {
+        return await sendMessageToTab(tab.id!, {action: 'clickWithCoordinates', x: args.x, y: args.y})
+    } else if (name === 'inspect') {
+        return await sendMessageToTab(tab.id!, {action: 'inspect', uid: args.uid})
+    } else if (name === 'execute_js') {
+        return await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                type: 'EXECUTE_JS',
+                code: args.code,
+                tabId: tab.id
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError.message)
+                } else {
+                    resolve(JSON.stringify(response))
+                }
+            })
+        })
     }
     return 'Unknown tool';
+}
+
+async function sendMessageToTab(id: number, toolArgs : any) : Promise<string> {
+    return new Promise((resolve,reject) => {
+        chrome.tabs.sendMessage(id,toolArgs,(response) => {
+            if (chrome.runtime.lastError) {
+                return reject(chrome.runtime.lastError.message)
+            }
+            else {
+                return resolve(response.data)
+            }
+        })
+    })
+
 }
 
 

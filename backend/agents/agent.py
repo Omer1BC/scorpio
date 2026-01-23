@@ -20,7 +20,48 @@ class Agent:
         self.llm = ChatOpenAI(model="gpt-4o-mini",api_key=os.getenv("OPENAI_API_KEY")).bind_tools(tools)
         # create the agent loop
         def invoke_model(state:MessagesState):
-            resp = self.llm.invoke(state["messages"])
+            import json
+            messages = state["messages"].copy()
+            # Work backwards through consecutive ToolMessages to find take_screenshot
+            for i in range(len(messages) - 1, -1, -1):
+                msg = messages[i]
+
+                if hasattr(msg, 'name'):  # It's a ToolMessage
+                    if msg.name == 'take_screenshot' and hasattr(msg, 'content'):
+                        # Parse the JSON content which includes both screenshot and viewport
+                        try:
+                            screenshot_data = json.loads(msg.content)
+                            screenshot_base64 = screenshot_data.get('screenshot', msg.content)
+                            viewport = screenshot_data.get('viewport', {})
+                        except (json.JSONDecodeError, TypeError):
+                            # Fallback to old format (just base64 string)
+                            screenshot_base64 = msg.content
+                            viewport = {}
+
+                        # Format the screenshot and viewport info for the LLM
+                        content = [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{screenshot_base64}"}
+                            }
+                        ]
+
+                        # Add viewport information as text
+                        if viewport:
+                            viewport_text = f"Viewport dimensions: {viewport['width']}x{viewport['height']} pixels"
+                            content.append({
+                                "type": "text",
+                                "text": viewport_text
+                            })
+
+                        messages.append(HumanMessage(content=content))
+                        break
+                    # Continue looking backwards for more ToolMessages
+                else:
+                    # Hit a non-ToolMessage, stop looking
+                    break
+
+            resp = self.llm.invoke(messages)
             return {"messages": [resp]}
         
         def should_continue(state:MessagesState):
@@ -43,58 +84,53 @@ class Agent:
         }
     if data is either input, invalid or Approve/Disapprove
     '''
+    async def clear_history(self,thread_id) -> list:
+        await self.agent.checkpointer.adelete_thread(thread_id)
+        return []
+    def resume_with_approved_tools(self,payload):
+        extended = []
+        for event in self.agent.stream(None, payload["config"], stream_mode="updates"):
+            for _,update in event.items():
+                if "messages" in update: extended.extend(update["messages"]) 
+        return extended
+    def resume_with_declined_tools(self,payload):
+        snapshot = self.agent.get_state(payload["config"])
+        old_hist = snapshot.values["messages"]
+        declined_tools = [
+            ToolMessage(content="Tool use declined by user: user is unhappy with tool selection, ask for follow up to get more information!",
+                        tool_call_id=tool["id"])
+        for tool in old_hist[-1].tool_calls]
+        # old_hist[-1].tool_calls = []
+        # newhist = old_hist + declined_tools 
+
+        self.agent.update_state(payload["config"],{"messages": declined_tools})
+        extended = []
+        for event in self.agent.stream(None,payload["config"],stream_mode="updates"):
+            for _,update in event.items():
+                if "messages" in update: extended.extend(update["messages"])
+        return extended
+
     def get_response(self,payload,history=[]):
-        if not payload["data"] or payload["data"] == "exit" :
+        if not payload["data"]:
             return []
-        else:
-            try:
-                last_event = None
-                if payload["data"] not in ("Approve","Disapprove"):
-                    input_message = HumanMessage(content=payload["data"])
-                    history.append(input_message)
-                    extended = []
-                    for event in self.agent.stream({"messages": history},payload["config"],stream_mode="updates"):
-                        for _,update in event.items():
-                            if "messages" in update: extended.extend(update["messages"])
-                        last_event = event
-                    # remaining = last_event["messages"][-1]
-                    snapshot = self.agent.get_state(payload["config"])
-                    assert(snapshot.next, "Error in the exeuction flow")
-                    result = "Tool call intention: \n"
-                    if snapshot.values["messages"][-1].tool_calls:
-                        for tool in  snapshot.values["messages"][-1].tool_calls:
-                            result += f"f{tool["name"]} | {tool["args"]}\n"
-                        # remaining +=  [AIMessage(content=result)]
-                    return extended
-
-                else:
-                    snapshot = self.agent.get_state(payload["config"])
-
-                    if payload["data"] == "Disapprove":
-                        decline = [ToolMessage(
-                                    content="Tool execution was denied by the user.",
-                                    tool_call_id=tool["id"]
-                                )
-                            for tool in snapshot.values["messages"][-1].tool_calls]
-
-                        self.agent.update_state(payload["config"], {"messages": decline})
-                        extended = []
-                        for event in self.agent.stream(None, payload["config"], stream_mode="updates"):
-                            for _,update in event.items():
-                                if "messages" in update: extended.extend(update["messages"])           
-                            last_event = event
-                        return extended
-                    else:
-                        extended = []
-                        for event in self.agent.stream(None, payload["config"], stream_mode="updates"):
-                            for _,update in event.items():
-                                if "messages" in update: extended.extend(update["messages"]) 
-                            last_event = event
-                        return extended
-
-            except Exception as e:
-                error_msg = f"Error occurred: {str(e)}"
-                return [AIMessage(content=error_msg)]
+        last_event = None
+        if payload["data"] not in ("Approve","Disapprove"):
+            input_message = HumanMessage(content=payload["data"])
+            history.append(input_message)
+            extended = []
+            for event in self.agent.stream({"messages": history},payload["config"],stream_mode="updates"):
+                for _,update in event.items():
+                    if "messages" in update: extended.extend(update["messages"])
+                last_event = event
+            # remaining = last_event["messages"][-1]
+            snapshot = self.agent.get_state(payload["config"])
+            assert(snapshot.next, "Error in the exeuction flow")
+            result = "Tool call intention: \n"
+            if snapshot.values["messages"][-1].tool_calls:
+                for tool in  snapshot.values["messages"][-1].tool_calls:
+                    result += f"f{tool["name"]} | {tool["args"]}\n"
+                # remaining +=  [AIMessage(content=result)]
+            return extended
     def format_message_history(self,response) -> str:
         """Format the agent's message history into a readable string"""
 

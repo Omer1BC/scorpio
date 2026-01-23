@@ -18,7 +18,11 @@ export default defineManifest({
     'contentSettings',
     'tabs',
     'userScripts',
-    'activeTab'
+    'activeTab',
+    'scripting',
+  ],
+  host_permissions: [
+    '<all_urls>'
   ],
   content_scripts: [{
     js: ['src/content/main.tsx'],
